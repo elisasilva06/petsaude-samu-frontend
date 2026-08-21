@@ -1,24 +1,31 @@
 export const Colors = {
-  primary: '#003049',
-  primaryDark: '#002C3D',
+  // Marca / navegação
+  primary: '#2D4F4F',
+  primaryDark: '#1F3D3D',
 
+  // Fundos
   background: '#FFFFFF',
   surface: '#FFFFFF',
-  surfaceMuted: '#F8F9FA',
-  surfaceSecondary: '#F1F5F9',
+  surfaceMuted: '#F3F7F7',
+  surfaceSecondary: '#E6F0F0',
 
-  text: '#1E293B',
-  textStrong: '#334155',
-  textSecondary: '#64748B',
-  textLabel: '#475569',
-  textOnPrimaryMuted: '#A0B3B9',
+  // Textos
+  text: '#1F2F2F',
+  textStrong: '#1F2F2F',
+  textSecondary: '#5F7F7F',
+  textLabel: '#3E6B6B',
+  textOnPrimaryMuted: '#A3BFBF',
 
-  border: '#E2E8F0',
+  // Elementos neutros
+  border: '#CFE3E3',
+  muted: '#7FA3A3',
+  disabled: '#BFDADA',
 
-  success: '#2A9D8F',
+  // Estados
+  success: '#2D6A4F',
   successDark: '#2D6A4F',
-  danger: '#E63946',
-
-  muted: '#94A3B8',
-  disabled: '#CBD5E1',
+  danger: '#B3261E',
+  emergency: '#8B1E1E',
+  dangerSurface: '#FDECEC',
+  borderSoft: '#BFDADA',
 };
