@@ -1,22 +1,43 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
 
 import {
+  router,
+  useFocusEffect,
+} from 'expo-router';
+
+import {
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
   FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+} from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 
-import { HistoricoCard } from '@/features/historico/components/HistoricoCard';
-import { historicoMock } from '@/features/historico/mocks';
-import { HistoricoAtendimento } from '@/features/historico/types';
+import {
+  HistoricoCard,
+} from '@/features/historico/components/HistoricoCard';
+
+import {
+  historicoService,
+} from '@/features/historico/services';
+
+import type {
+  HistoricoAtendimento,
+} from '@/features/historico/types';
 
 type FiltroHistorico =
   | 'todos'
@@ -51,9 +72,10 @@ const FILTROS: FiltroConfig[] = [
 function converterData(
   data: string
 ): Date {
-  const [dia, mes, ano] = data
-    .split('/')
-    .map(Number);
+  const [dia, mes, ano] =
+    data
+      .split('/')
+      .map(Number);
 
   return new Date(
     ano,
@@ -81,15 +103,6 @@ function inicioDaSemana(
   const diaSemana =
     resultado.getDay();
 
-  /*
-   * getDay:
-   * domingo = 0
-   * segunda = 1
-   * ...
-   *
-   * Queremos a semana começando
-   * na segunda-feira.
-   */
   const diferenca =
     diaSemana === 0
       ? -6
@@ -103,14 +116,121 @@ function inicioDaSemana(
   return resultado;
 }
 
+/**
+ * Histórico de atendimentos finalizados.
+ *
+ * A tela não acessa mocks diretamente.
+ *
+ * Fluxo:
+ *
+ * HistoricoScreen
+ *      ↓
+ * historicoService
+ *      ↓
+ * mock hoje
+ *      ↓
+ * API futuramente
+ */
 export default function HistoricoScreen() {
-  const [filtro, setFiltro] =
+  const [
+    filtro,
+    setFiltro,
+  ] =
     useState<FiltroHistorico>(
       'todos'
     );
 
+  const [
+    atendimentos,
+    setAtendimentos,
+  ] = useState<
+    HistoricoAtendimento[]
+  >([]);
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    atualizando,
+    setAtualizando,
+  ] = useState(false);
+
+  const [
+    erro,
+    setErro,
+  ] = useState('');
+
+  /**
+   * Carrega novamente o Histórico.
+   *
+   * Isso é importante porque uma ocorrência
+   * pode ter sido finalizada em outra tela.
+   */
+  const carregarHistorico =
+    useCallback(async () => {
+      try {
+        setCarregando(true);
+        setErro('');
+
+        const resultado =
+          await historicoService.listarAtendimentos();
+
+        setAtendimentos(
+          resultado
+        );
+      } catch (error) {
+        console.error(
+          'Erro ao carregar histórico:',
+          error
+        );
+
+        setErro(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível carregar o histórico.'
+        );
+      } finally {
+        setCarregando(false);
+      }
+    }, []);
+
+  /**
+   * Toda vez que a aba Histórico recebe foco,
+   * buscamos os registros novamente.
+   *
+   * Portanto:
+   *
+   * finalizar ocorrência
+   *      ↓
+   * abrir Histórico
+   *      ↓
+   * registro aparece
+   */
+  useFocusEffect(
+    useCallback(() => {
+      void carregarHistorico();
+    }, [carregarHistorico])
+  );
+
+  async function atualizarHistorico() {
+    if (atualizando) {
+      return;
+    }
+
+    try {
+      setAtualizando(true);
+
+      await carregarHistorico();
+    } finally {
+      setAtualizando(false);
+    }
+  }
+
   function abrirDetalhes(
-    atendimento: HistoricoAtendimento
+    atendimento:
+      HistoricoAtendimento
   ) {
     router.push({
       pathname:
@@ -122,16 +242,27 @@ export default function HistoricoScreen() {
     });
   }
 
+  /**
+   * Os filtros continuam locais por enquanto.
+   *
+   * TODO(BACKEND):
+   * Se o endpoint real usar paginação/filtros,
+   * esta lógica poderá migrar para o service.
+   */
   const historicoFiltrado =
     useMemo(() => {
       const hoje =
-        inicioDoDia(new Date());
+        inicioDoDia(
+          new Date()
+        );
 
-      if (filtro === 'todos') {
-        return historicoMock;
+      if (
+        filtro === 'todos'
+      ) {
+        return atendimentos;
       }
 
-      return historicoMock.filter(
+      return atendimentos.filter(
         (atendimento) => {
           const dataAtendimento =
             inicioDoDia(
@@ -140,7 +271,9 @@ export default function HistoricoScreen() {
               )
             );
 
-          if (filtro === 'hoje') {
+          if (
+            filtro === 'hoje'
+          ) {
             return (
               dataAtendimento.getTime() ===
               hoje.getTime()
@@ -151,7 +284,9 @@ export default function HistoricoScreen() {
             filtro === 'semana'
           ) {
             const inicioSemana =
-              inicioDaSemana(hoje);
+              inicioDaSemana(
+                hoje
+              );
 
             const fimSemana =
               new Date(
@@ -178,7 +313,9 @@ export default function HistoricoScreen() {
             );
           }
 
-          if (filtro === 'mes') {
+          if (
+            filtro === 'mes'
+          ) {
             return (
               dataAtendimento.getMonth() ===
                 hoje.getMonth() &&
@@ -190,7 +327,41 @@ export default function HistoricoScreen() {
           return true;
         }
       );
-    }, [filtro]);
+    }, [
+      filtro,
+      atendimentos,
+    ]);
+
+  if (
+    carregando &&
+    atendimentos.length === 0
+  ) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
+        <View
+          style={
+            styles.loadingContainer
+          }
+        >
+          <ActivityIndicator
+            size="large"
+            color={Colors.primary}
+          />
+
+          <Text
+            style={
+              styles.loadingText
+            }
+          >
+            Carregando histórico...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -204,7 +375,9 @@ export default function HistoricoScreen() {
             Histórico
           </Text>
 
-          <Text style={styles.subtitle}>
+          <Text
+            style={styles.subtitle}
+          >
             Atendimentos finalizados
           </Text>
         </View>
@@ -222,56 +395,106 @@ export default function HistoricoScreen() {
         </View>
       </View>
 
+      {/* ERRO */}
+      {erro ? (
+        <View
+          style={
+            styles.errorContainer
+          }
+        >
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={Colors.danger}
+          />
+
+          <Text
+            style={
+              styles.errorText
+            }
+          >
+            {erro}
+          </Text>
+
+          <TouchableOpacity
+            onPress={() => {
+              void carregarHistorico();
+            }}
+          >
+            <Ionicons
+              name="refresh"
+              size={20}
+              color={Colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* FILTROS */}
       <View
         style={
           styles.filtersContainer
         }
       >
-        {FILTROS.map((item) => {
-          const selecionado =
-            filtro === item.key;
+        {FILTROS.map(
+          (item) => {
+            const selecionado =
+              filtro ===
+              item.key;
 
-          return (
-            <TouchableOpacity
-              key={item.key}
-              style={[
-                styles.filterButton,
-
-                selecionado &&
-                  styles.filterButtonActive,
-              ]}
-              onPress={() =>
-                setFiltro(item.key)
-              }
-              activeOpacity={0.8}
-            >
-              <Text
+            return (
+              <TouchableOpacity
+                key={
+                  item.key
+                }
                 style={[
-                  styles.filterText,
+                  styles.filterButton,
 
                   selecionado &&
-                    styles.filterTextActive,
+                    styles.filterButtonActive,
                 ]}
+                onPress={() =>
+                  setFiltro(
+                    item.key
+                  )
+                }
+                activeOpacity={
+                  0.8
+                }
               >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+                <Text
+                  style={[
+                    styles.filterText,
+
+                    selecionado &&
+                      styles.filterTextActive,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          }
+        )}
       </View>
 
-      {/* HISTÓRICO */}
+      {/* LISTA */}
       <FlatList
-        data={historicoFiltrado}
-        keyExtractor={(item) =>
-          item.id
+        data={
+          historicoFiltrado
         }
-        renderItem={({ item }) => (
+        keyExtractor={(
+          item
+        ) => item.id}
+        renderItem={({
+          item,
+        }) => (
           <HistoricoCard
             atendimento={item}
             onPress={() =>
-              abrirDetalhes(item)
+              abrirDetalhes(
+                item
+              )
             }
           />
         )}
@@ -281,8 +504,22 @@ export default function HistoricoScreen() {
         showsVerticalScrollIndicator={
           false
         }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              atualizando
+            }
+            onRefresh={
+              atualizarHistorico
+            }
+          />
+        }
         ListHeaderComponent={
-          <View style={styles.summary}>
+          <View
+            style={
+              styles.summary
+            }
+          >
             <Text
               style={
                 styles.summaryNumber
@@ -331,8 +568,7 @@ export default function HistoricoScreen() {
               }
             >
               Não existem atendimentos
-              para o período
-              selecionado.
+              para o período selecionado.
             </Text>
           </View>
         }
@@ -349,7 +585,19 @@ const styles =
         Colors.surfaceMuted,
     },
 
-    // HEADER
+    loadingContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    loadingText: {
+      marginTop: 12,
+      color:
+        Colors.textSecondary,
+      fontSize: 13,
+    },
+
     header: {
       paddingHorizontal: 18,
       paddingTop: 8,
@@ -388,7 +636,25 @@ const styles =
       borderRadius: 21,
     },
 
-    // FILTROS
+    errorContainer: {
+      marginHorizontal: 16,
+      marginTop: 12,
+      padding: 11,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor:
+        Colors.dangerSurface,
+      borderRadius: 10,
+    },
+
+    errorText: {
+      flex: 1,
+      color:
+        Colors.danger,
+      fontSize: 11,
+    },
+
     filtersContainer: {
       paddingHorizontal: 16,
       paddingTop: 13,
@@ -431,10 +697,10 @@ const styles =
         Colors.background,
     },
 
-    // LISTA
     listContent: {
       padding: 16,
       paddingBottom: 30,
+      flexGrow: 1,
     },
 
     summary: {
@@ -449,7 +715,8 @@ const styles =
     },
 
     summaryNumber: {
-      color: Colors.primary,
+      color:
+        Colors.primary,
       fontSize: 22,
       fontWeight: '900',
     },
@@ -460,7 +727,6 @@ const styles =
       fontSize: 12,
     },
 
-    // VAZIO
     emptyContainer: {
       minHeight: 300,
       paddingHorizontal: 30,

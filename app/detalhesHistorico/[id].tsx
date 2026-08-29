@@ -1,55 +1,246 @@
 import { Ionicons } from '@expo/vector-icons';
+
 import {
-    router,
-    useLocalSearchParams,
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
 } from 'expo-router';
 
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  useCallback,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+} from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 
-import { buscarHistoricoPorId } from '@/features/historico/mocks';
+import {
+  historicoService,
+} from '@/features/historico/services';
 
+import type {
+  HistoricoAtendimento,
+} from '@/features/historico/types';
+
+/**
+ * Tela de detalhes de um atendimento
+ * já finalizado.
+ *
+ * A tela não acessa mais mocks diretamente.
+ *
+ * Fluxo:
+ *
+ * DetalhesHistoricoScreen
+ *        ↓
+ * historicoService
+ *        ↓
+ * mock hoje
+ *        ↓
+ * API futuramente
+ */
 export default function DetalhesHistoricoScreen() {
-  const { id } = useLocalSearchParams<{
-    id: string;
-  }>();
+  const params =
+    useLocalSearchParams<{
+      id: string | string[];
+    }>();
 
-  const atendimento =
-    buscarHistoricoPorId(id ?? '');
+  const id =
+    Array.isArray(params.id)
+      ? params.id[0]
+      : params.id;
+
+  const [
+    atendimento,
+    setAtendimento,
+  ] =
+    useState<HistoricoAtendimento | null>(
+      null
+    );
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    erro,
+    setErro,
+  ] = useState('');
+
+  /**
+   * Carrega o atendimento através
+   * do mesmo service usado pela
+   * lista do Histórico.
+   */
+  const carregarAtendimento =
+    useCallback(async () => {
+      if (!id) {
+        setErro(
+          'Identificador do atendimento inválido.'
+        );
+
+        setCarregando(false);
+
+        return;
+      }
+
+      try {
+        setCarregando(true);
+
+        setErro('');
+
+        const resultado =
+          await historicoService.buscarAtendimento(
+            id
+          );
+
+        setAtendimento(
+          resultado
+        );
+      } catch (error) {
+        console.error(
+          'Erro ao carregar atendimento do histórico:',
+          error
+        );
+
+        setAtendimento(null);
+
+        setErro(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível carregar este atendimento.'
+        );
+      } finally {
+        setCarregando(false);
+      }
+    }, [id]);
+
+  /**
+   * Recarrega caso os dados do histórico
+   * sejam atualizados enquanto outra tela
+   * estiver aberta.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      void carregarAtendimento();
+    }, [carregarAtendimento])
+  );
+
+  if (carregando) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
+        <View
+          style={
+            styles.loadingContainer
+          }
+        >
+          <ActivityIndicator
+            size="large"
+            color={Colors.primary}
+          />
+
+          <Text
+            style={
+              styles.loadingText
+            }
+          >
+            Carregando atendimento...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!atendimento) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.notFoundContainer}>
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
+        <View
+          style={
+            styles.notFoundContainer
+          }
+        >
           <Ionicons
             name="alert-circle-outline"
             size={46}
             color={Colors.muted}
           />
 
-          <Text style={styles.notFoundTitle}>
+          <Text
+            style={
+              styles.notFoundTitle
+            }
+          >
             Atendimento não encontrado
           </Text>
 
-          <Text style={styles.notFoundText}>
-            Não foi possível localizar este
-            atendimento no histórico.
+          <Text
+            style={
+              styles.notFoundText
+            }
+          >
+            {erro ||
+              'Não foi possível localizar este atendimento no histórico.'}
           </Text>
 
-          <Text
-            style={styles.backLink}
-            onPress={() => router.back()}
+          <TouchableOpacity
+            style={
+              styles.retryButton
+            }
+            onPress={() => {
+              void carregarAtendimento();
+            }}
           >
-            Voltar
-          </Text>
+            <Ionicons
+              name="refresh-outline"
+              size={18}
+              color={
+                Colors.background
+              }
+            />
+
+            <Text
+              style={
+                styles.retryButtonText
+              }
+            >
+              Tentar novamente
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={
+              styles.backButtonTextContainer
+            }
+            onPress={() =>
+              router.back()
+            }
+          >
+            <Text
+              style={
+                styles.backLink
+              }
+            >
+              Voltar
+            </Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -66,31 +257,63 @@ export default function DetalhesHistoricoScreen() {
     >
       {/* HEADER */}
       <View style={styles.header}>
-        <Ionicons
-          name="arrow-back"
-          size={24}
-          color={Colors.text}
-          onPress={() => router.back()}
-        />
+        <TouchableOpacity
+          style={
+            styles.headerBackButton
+          }
+          onPress={() =>
+            router.back()
+          }
+          accessibilityRole="button"
+          accessibilityLabel="Voltar"
+        >
+          <Ionicons
+            name="arrow-back"
+            size={24}
+            color={Colors.text}
+          />
+        </TouchableOpacity>
 
-        <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>
+        <View
+          style={
+            styles.headerText
+          }
+        >
+          <Text
+            style={
+              styles.headerTitle
+            }
+          >
             Detalhes do Atendimento
           </Text>
 
-          <Text style={styles.headerSubtitle}>
+          <Text
+            style={
+              styles.headerSubtitle
+            }
+          >
             Ocorrência #{atendimento.id}
           </Text>
         </View>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={
+          styles.content
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
       >
         {/* STATUS */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusLeft}>
+        <View
+          style={styles.statusCard}
+        >
+          <View
+            style={
+              styles.statusLeft
+            }
+          >
             <Ionicons
               name="checkmark-circle"
               size={28}
@@ -98,12 +321,21 @@ export default function DetalhesHistoricoScreen() {
             />
 
             <View>
-              <Text style={styles.statusTitle}>
+              <Text
+                style={
+                  styles.statusTitle
+                }
+              >
                 Atendimento finalizado
               </Text>
 
-              <Text style={styles.statusSubtitle}>
-                {atendimento.data} •{' '}
+              <Text
+                style={
+                  styles.statusSubtitle
+                }
+              >
+                {atendimento.data}
+                {' • '}
                 {atendimento.horario}
               </Text>
             </View>
@@ -112,6 +344,7 @@ export default function DetalhesHistoricoScreen() {
           <View
             style={[
               styles.riskBadge,
+
               emergencia
                 ? styles.emergencyBadge
                 : styles.urgentBadge,
@@ -120,6 +353,7 @@ export default function DetalhesHistoricoScreen() {
             <Text
               style={[
                 styles.riskText,
+
                 emergencia
                   ? styles.emergencyText
                   : styles.urgentText,
@@ -131,12 +365,20 @@ export default function DetalhesHistoricoScreen() {
         </View>
 
         {/* PACIENTE */}
-        <Text style={styles.sectionLabel}>
+        <Text
+          style={
+            styles.sectionLabel
+          }
+        >
           Paciente
         </Text>
 
         <View style={styles.card}>
-          <View style={styles.iconCircle}>
+          <View
+            style={
+              styles.iconCircle
+            }
+          >
             <Ionicons
               name="person-outline"
               size={22}
@@ -144,55 +386,86 @@ export default function DetalhesHistoricoScreen() {
             />
           </View>
 
-          <View style={styles.cardContent}>
-            <Text style={styles.mainText}>
+          <View
+            style={
+              styles.cardContent
+            }
+          >
+            <Text
+              style={styles.mainText}
+            >
               {atendimento.paciente}
             </Text>
 
-            <Text style={styles.secondaryText}>
-              {atendimento.idade} anos •{' '}
+            <Text
+              style={
+                styles.secondaryText
+              }
+            >
+              {atendimento.idade} anos
+              {' • '}
               {atendimento.sexo}
             </Text>
           </View>
         </View>
 
         {/* OCORRÊNCIA */}
-        <Text style={styles.sectionLabel}>
+        <Text
+          style={
+            styles.sectionLabel
+          }
+        >
           Ocorrência
         </Text>
 
-        <View style={styles.infoCard}>
+        <View
+          style={styles.infoCard}
+        >
           <InfoRow
             icon="medical-outline"
             label="Tipo"
-            value={atendimento.tipoOcorrencia}
+            value={
+              atendimento.tipoOcorrencia
+            }
           />
 
           <InfoRow
             icon="calendar-outline"
             label="Data"
-            value={atendimento.data}
+            value={
+              atendimento.data
+            }
           />
 
           <InfoRow
             icon="time-outline"
             label="Horário"
-            value={atendimento.horario}
+            value={
+              atendimento.horario
+            }
           />
 
           <InfoRow
             icon="location-outline"
             label="Local"
-            value={atendimento.endereco}
+            value={
+              atendimento.endereco
+            }
           />
         </View>
 
         {/* DESTINO */}
-        <Text style={styles.sectionLabel}>
+        <Text
+          style={
+            styles.sectionLabel
+          }
+        >
           Destino
         </Text>
 
-        <View style={styles.infoCard}>
+        <View
+          style={styles.infoCard}
+        >
           <InfoRow
             icon="business-outline"
             label="Hospital"
@@ -203,11 +476,17 @@ export default function DetalhesHistoricoScreen() {
         </View>
 
         {/* PROFISSIONAL */}
-        <Text style={styles.sectionLabel}>
+        <Text
+          style={
+            styles.sectionLabel
+          }
+        >
           Profissional responsável
         </Text>
 
-        <View style={styles.infoCard}>
+        <View
+          style={styles.infoCard}
+        >
           <InfoRow
             icon="person-circle-outline"
             label="Responsável"
@@ -218,12 +497,20 @@ export default function DetalhesHistoricoScreen() {
         </View>
 
         {/* FICHA SAE */}
-        <Text style={styles.sectionLabel}>
+        <Text
+          style={
+            styles.sectionLabel
+          }
+        >
           Registro clínico
         </Text>
 
-        <View style={styles.saeCard}>
-          <View style={styles.saeIcon}>
+        <View
+          style={styles.saeCard}
+        >
+          <View
+            style={styles.saeIcon}
+          >
             <Ionicons
               name="document-text-outline"
               size={24}
@@ -231,16 +518,24 @@ export default function DetalhesHistoricoScreen() {
             />
           </View>
 
-          <View style={styles.saeContent}>
-            <Text style={styles.saeTitle}>
+          <View
+            style={
+              styles.saeContent
+            }
+          >
+            <Text
+              style={styles.saeTitle}
+            >
               Ficha SAE
             </Text>
 
-            <Text style={styles.saeText}>
-              Os dados completos da ficha
-              aparecerão aqui quando o backend
-              disponibilizar o registro do
-              atendimento.
+            <Text
+              style={styles.saeText}
+            >
+              O registro clínico completo será
+              disponibilizado aqui quando a
+              integração definitiva com o backend
+              estiver pronta.
             </Text>
           </View>
         </View>
@@ -250,8 +545,11 @@ export default function DetalhesHistoricoScreen() {
 }
 
 type InfoRowProps = {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon:
+    keyof typeof Ionicons.glyphMap;
+
   label: string;
+
   value: string;
 };
 
@@ -261,8 +559,12 @@ function InfoRow({
   value,
 }: InfoRowProps) {
   return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoIcon}>
+    <View
+      style={styles.infoRow}
+    >
+      <View
+        style={styles.infoIcon}
+      >
         <Ionicons
           name={icon}
           size={18}
@@ -270,12 +572,20 @@ function InfoRow({
         />
       </View>
 
-      <View style={styles.infoTextContainer}>
-        <Text style={styles.infoLabel}>
+      <View
+        style={
+          styles.infoTextContainer
+        }
+      >
+        <Text
+          style={styles.infoLabel}
+        >
           {label}
         </Text>
 
-        <Text style={styles.infoValue}>
+        <Text
+          style={styles.infoValue}
+        >
           {value}
         </Text>
       </View>
@@ -283,253 +593,326 @@ function InfoRow({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.surfaceMuted,
-  },
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor:
+        Colors.surfaceMuted,
+    },
 
-  header: {
-    minHeight: 64,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
+    loadingContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  headerText: {
-    flex: 1,
-  },
+    loadingText: {
+      marginTop: 12,
+      color:
+        Colors.textSecondary,
+      fontSize: 13,
+    },
 
-  headerTitle: {
-    color: Colors.text,
-    fontSize: 17,
-    fontWeight: '800',
-  },
+    header: {
+      minHeight: 64,
+      paddingHorizontal: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor:
+        Colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor:
+        Colors.border,
+    },
 
-  headerSubtitle: {
-    marginTop: 2,
-    color: Colors.textSecondary,
-    fontSize: 11,
-  },
+    headerBackButton: {
+      width: 42,
+      height: 42,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  content: {
-    padding: 16,
-    paddingBottom: 35,
-  },
+    headerText: {
+      flex: 1,
+      marginLeft: 4,
+    },
 
-  statusCard: {
-    marginBottom: 20,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 15,
-  },
+    headerTitle: {
+      color: Colors.text,
+      fontSize: 17,
+      fontWeight: '800',
+    },
 
-  statusLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+    headerSubtitle: {
+      marginTop: 2,
+      color:
+        Colors.textSecondary,
+      fontSize: 11,
+    },
 
-  statusTitle: {
-    color: Colors.text,
-    fontSize: 14,
-    fontWeight: '800',
-  },
+    content: {
+      padding: 16,
+      paddingBottom: 35,
+    },
 
-  statusSubtitle: {
-    marginTop: 3,
-    color: Colors.textSecondary,
-    fontSize: 10,
-  },
+    statusCard: {
+      marginBottom: 20,
+      padding: 15,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'space-between',
+      backgroundColor:
+        Colors.background,
+      borderWidth: 1,
+      borderColor:
+        Colors.border,
+      borderRadius: 15,
+    },
 
-  riskBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
+    statusLeft: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
 
-  emergencyBadge: {
-    backgroundColor: Colors.dangerSurface,
-  },
+    statusTitle: {
+      color: Colors.text,
+      fontSize: 14,
+      fontWeight: '800',
+    },
 
-  urgentBadge: {
-    backgroundColor: Colors.surfaceSecondary,
-  },
+    statusSubtitle: {
+      marginTop: 3,
+      color:
+        Colors.textSecondary,
+      fontSize: 10,
+    },
 
-  riskText: {
-    fontSize: 9,
-    fontWeight: '800',
-  },
+    riskBadge: {
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+      borderRadius: 12,
+    },
 
-  emergencyText: {
-    color: Colors.danger,
-  },
+    emergencyBadge: {
+      backgroundColor:
+        Colors.dangerSurface,
+    },
 
-  urgentText: {
-    color: Colors.primary,
-  },
+    urgentBadge: {
+      backgroundColor:
+        Colors.surfaceSecondary,
+    },
 
-  sectionLabel: {
-    marginTop: 5,
-    marginBottom: 8,
-    color: Colors.textLabel,
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
+    riskText: {
+      fontSize: 9,
+      fontWeight: '800',
+    },
 
-  card: {
-    marginBottom: 18,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
-  },
+    emergencyText: {
+      color: Colors.danger,
+    },
 
-  iconCircle: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: 21,
-  },
+    urgentText: {
+      color: Colors.primary,
+    },
 
-  cardContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
+    sectionLabel: {
+      marginTop: 5,
+      marginBottom: 8,
+      color:
+        Colors.textLabel,
+      fontSize: 11,
+      fontWeight: '800',
+      textTransform:
+        'uppercase',
+    },
 
-  mainText: {
-    color: Colors.text,
-    fontSize: 14,
-    fontWeight: '800',
-  },
+    card: {
+      marginBottom: 18,
+      padding: 15,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor:
+        Colors.background,
+      borderWidth: 1,
+      borderColor:
+        Colors.border,
+      borderRadius: 14,
+    },
 
-  secondaryText: {
-    marginTop: 3,
-    color: Colors.textSecondary,
-    fontSize: 11,
-  },
+    iconCircle: {
+      width: 42,
+      height: 42,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        Colors.surfaceSecondary,
+      borderRadius: 21,
+    },
 
-  infoCard: {
-    marginBottom: 18,
-    paddingHorizontal: 15,
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
-  },
+    cardContent: {
+      flex: 1,
+      marginLeft: 12,
+    },
 
-  infoRow: {
-    minHeight: 65,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceSecondary,
-  },
+    mainText: {
+      color: Colors.text,
+      fontSize: 14,
+      fontWeight: '800',
+    },
 
-  infoIcon: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: 18,
-  },
+    secondaryText: {
+      marginTop: 3,
+      color:
+        Colors.textSecondary,
+      fontSize: 11,
+    },
 
-  infoTextContainer: {
-    flex: 1,
-    marginLeft: 11,
-  },
+    infoCard: {
+      marginBottom: 18,
+      paddingHorizontal: 15,
+      backgroundColor:
+        Colors.background,
+      borderWidth: 1,
+      borderColor:
+        Colors.border,
+      borderRadius: 14,
+    },
 
-  infoLabel: {
-    color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: '600',
-  },
+    infoRow: {
+      minHeight: 65,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderBottomWidth: 1,
+      borderBottomColor:
+        Colors.surfaceSecondary,
+    },
 
-  infoValue: {
-    marginTop: 3,
-    color: Colors.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
+    infoIcon: {
+      width: 36,
+      height: 36,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        Colors.surfaceSecondary,
+      borderRadius: 18,
+    },
 
-  saeCard: {
-    padding: 16,
-    flexDirection: 'row',
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
-  },
+    infoTextContainer: {
+      flex: 1,
+      marginLeft: 11,
+    },
 
-  saeIcon: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: 21,
-  },
+    infoLabel: {
+      color:
+        Colors.textSecondary,
+      fontSize: 10,
+      fontWeight: '600',
+    },
 
-  saeContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
+    infoValue: {
+      marginTop: 3,
+      color: Colors.text,
+      fontSize: 12,
+      fontWeight: '700',
+    },
 
-  saeTitle: {
-    color: Colors.text,
-    fontSize: 13,
-    fontWeight: '800',
-  },
+    saeCard: {
+      padding: 16,
+      flexDirection: 'row',
+      backgroundColor:
+        Colors.background,
+      borderWidth: 1,
+      borderColor:
+        Colors.border,
+      borderRadius: 14,
+    },
 
-  saeText: {
-    marginTop: 4,
-    color: Colors.textSecondary,
-    fontSize: 11,
-    lineHeight: 17,
-  },
+    saeIcon: {
+      width: 42,
+      height: 42,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        Colors.surfaceSecondary,
+      borderRadius: 21,
+    },
 
-  notFoundContainer: {
-    flex: 1,
-    padding: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    saeContent: {
+      flex: 1,
+      marginLeft: 12,
+    },
 
-  notFoundTitle: {
-    marginTop: 12,
-    color: Colors.text,
-    fontSize: 17,
-    fontWeight: '800',
-  },
+    saeTitle: {
+      color: Colors.text,
+      fontSize: 13,
+      fontWeight: '800',
+    },
 
-  notFoundText: {
-    marginTop: 5,
-    color: Colors.textSecondary,
-    fontSize: 12,
-    textAlign: 'center',
-  },
+    saeText: {
+      marginTop: 4,
+      color:
+        Colors.textSecondary,
+      fontSize: 11,
+      lineHeight: 17,
+    },
 
-  backLink: {
-    marginTop: 18,
-    color: Colors.primary,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-});
+    notFoundContainer: {
+      flex: 1,
+      padding: 30,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    notFoundTitle: {
+      marginTop: 12,
+      color: Colors.text,
+      fontSize: 17,
+      fontWeight: '800',
+    },
+
+    notFoundText: {
+      marginTop: 5,
+      color:
+        Colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+      textAlign: 'center',
+    },
+
+    retryButton: {
+      minHeight: 48,
+      marginTop: 20,
+      paddingHorizontal: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      backgroundColor:
+        Colors.primary,
+      borderRadius: 12,
+    },
+
+    retryButtonText: {
+      color:
+        Colors.background,
+      fontSize: 12,
+      fontWeight: '800',
+    },
+
+    backButtonTextContainer: {
+      marginTop: 8,
+      padding: 10,
+    },
+
+    backLink: {
+      color:
+        Colors.primary,
+      fontSize: 13,
+      fontWeight: '800',
+    },
+  });

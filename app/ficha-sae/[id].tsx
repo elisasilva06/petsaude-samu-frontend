@@ -1,11 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
+
 import {
   router,
   useLocalSearchParams,
 } from 'expo-router';
-import { useState } from 'react';
 
 import {
+  useEffect,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -14,31 +20,80 @@ import {
   View,
 } from 'react-native';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+} from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 
-import { criarChamadoMock } from '@/features/chamados/mocks';
+import {
+  chamadosService,
+} from '@/features/chamados/services';
+
+import type {
+  ChamadoDetalhado,
+} from '@/features/chamados/types';
+
+import {
+  ConcluirFichaModal,
+} from '@/features/ficha-sae/components/ConcluirFichaModal';
 
 import {
   FichaSaeProvider,
   useFichaSae,
 } from '@/features/ficha-sae/context/FichaSaeContext';
 
-import { criarFichaSaeAPartirDoChamado } from '@/features/ficha-sae/mappers';
+import {
+  criarFichaSaeAPartirDoChamado,
+} from '@/features/ficha-sae/mappers';
 
-import { AvaliacaoPrimariaSection } from '@/features/ficha-sae/sections/AvaliacaoPrimariaSection';
-import { AvaliacaoSecundariaSection } from '@/features/ficha-sae/sections/AvaliacaoSecundariaSection';
-import { DiagnosticosIntervencoesSection } from '@/features/ficha-sae/sections/DiagnosticosIntervencoesSection';
-import { FinalizacaoSection } from '@/features/ficha-sae/sections/FinalizacaoSection';
-import { GlasgowSection } from '@/features/ficha-sae/sections/GlasgowSection';
-import { IdentificacaoSection } from '@/features/ficha-sae/sections/IdentificacaoSection';
-import { MorseSection } from '@/features/ficha-sae/sections/MorseSection';
-import { RassSection } from '@/features/ficha-sae/sections/RassSection';
-import { TraumaQueimadurasSection } from '@/features/ficha-sae/sections/TraumaQueimadurasSection';
-import { TripsSection } from '@/features/ficha-sae/sections/TripsSection';
+import {
+  fichaSaeService,
+} from '@/features/ficha-sae/services';
 
-import { FichaSaeSectionKey } from '@/features/ficha-sae/types';
+import {
+  AvaliacaoPrimariaSection,
+} from '@/features/ficha-sae/sections/AvaliacaoPrimariaSection';
+
+import {
+  AvaliacaoSecundariaSection,
+} from '@/features/ficha-sae/sections/AvaliacaoSecundariaSection';
+
+import {
+  DiagnosticosIntervencoesSection,
+} from '@/features/ficha-sae/sections/DiagnosticosIntervencoesSection';
+
+import {
+  FinalizacaoSection,
+} from '@/features/ficha-sae/sections/FinalizacaoSection';
+
+import {
+  GlasgowSection,
+} from '@/features/ficha-sae/sections/GlasgowSection';
+
+import {
+  IdentificacaoSection,
+} from '@/features/ficha-sae/sections/IdentificacaoSection';
+
+import {
+  MorseSection,
+} from '@/features/ficha-sae/sections/MorseSection';
+
+import {
+  RassSection,
+} from '@/features/ficha-sae/sections/RassSection';
+
+import {
+  TraumaQueimadurasSection,
+} from '@/features/ficha-sae/sections/TraumaQueimadurasSection';
+
+import {
+  TripsSection,
+} from '@/features/ficha-sae/sections/TripsSection';
+
+import type {
+  FichaSaeSectionKey,
+} from '@/features/ficha-sae/types';
 
 type SectionConfig = {
   key: FichaSaeSectionKey;
@@ -99,14 +154,190 @@ const SECTIONS: SectionConfig[] = [
   },
 ];
 
+/**
+ * Carrega a ocorrência antes de criar
+ * o estado da Ficha SAE.
+ *
+ * Fluxo:
+ *
+ * FichaSaeScreen
+ *      ↓
+ * chamadosService.buscarChamado()
+ *      ↓
+ * criarFichaSaeAPartirDoChamado()
+ *      ↓
+ * FichaSaeProvider
+ */
 export default function FichaSaeScreen() {
-  const { id } = useLocalSearchParams<{
-    id: string;
-  }>();
+  const params =
+    useLocalSearchParams<{
+      id: string | string[];
+    }>();
 
-  const chamado = criarChamadoMock(
-    id ?? '1'
-  );
+  const id =
+    Array.isArray(params.id)
+      ? params.id[0]
+      : params.id;
+
+  const [
+    chamado,
+    setChamado,
+  ] =
+    useState<ChamadoDetalhado | null>(
+      null
+    );
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    erro,
+    setErro,
+  ] = useState('');
+
+  useEffect(() => {
+    async function carregar() {
+      if (!id) {
+        setErro(
+          'Identificador da ocorrência inválido.'
+        );
+
+        setCarregando(false);
+
+        return;
+      }
+
+      try {
+        setCarregando(true);
+        setErro('');
+
+        const resultado =
+          await chamadosService.buscarChamado(
+            id
+          );
+
+        if (
+          resultado.status !==
+          'em_atendimento'
+        ) {
+          setErro(
+            'A Ficha SAE só pode ser preenchida durante um atendimento em andamento.'
+          );
+
+          return;
+        }
+
+        setChamado(resultado);
+
+        await fichaSaeService.marcarEmPreenchimento(
+          resultado.id
+        );
+      } catch (error) {
+        console.error(
+          'Erro ao carregar Ficha SAE:',
+          error
+        );
+
+        setErro(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível carregar a Ficha SAE.'
+        );
+      } finally {
+        setCarregando(false);
+      }
+    }
+
+    void carregar();
+  }, [id]);
+
+  if (carregando) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
+        <View
+          style={
+            styles.loadingContainer
+          }
+        >
+          <ActivityIndicator
+            size="large"
+            color={Colors.primary}
+          />
+
+          <Text
+            style={
+              styles.loadingText
+            }
+          >
+            Carregando Ficha SAE...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (
+    !chamado ||
+    erro
+  ) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
+        <View
+          style={
+            styles.errorContainer
+          }
+        >
+          <Ionicons
+            name="alert-circle-outline"
+            size={40}
+            color={Colors.danger}
+          />
+
+          <Text
+            style={
+              styles.errorTitle
+            }
+          >
+            Ficha SAE indisponível
+          </Text>
+
+          <Text
+            style={
+              styles.errorText
+            }
+          >
+            {erro ||
+              'Não foi possível carregar a ficha.'}
+          </Text>
+
+          <TouchableOpacity
+            style={
+              styles.errorButton
+            }
+            onPress={() =>
+              router.back()
+            }
+          >
+            <Text
+              style={
+                styles.errorButtonText
+              }
+            >
+              Voltar
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const fichaInicial =
     criarFichaSaeAPartirDoChamado(
@@ -117,18 +348,21 @@ export default function FichaSaeScreen() {
     <FichaSaeProvider
       initialState={fichaInicial}
     >
-      <FichaSaeScreenContent />
+      <FichaSaeScreenContent
+        chamadoId={chamado.id}
+      />
     </FichaSaeProvider>
   );
 }
 
-function FichaSaeScreenContent() {
-  const { id } = useLocalSearchParams<{
-    id: string;
-  }>();
+type FichaSaeScreenContentProps = {
+  chamadoId: string;
+};
 
+function FichaSaeScreenContent({
+  chamadoId,
+}: FichaSaeScreenContentProps) {
   const {
-    state,
     resetFicha,
   } = useFichaSae();
 
@@ -140,21 +374,55 @@ function FichaSaeScreenContent() {
       'identificacao'
     );
 
+  const [
+    concluindo,
+    setConcluindo,
+  ] = useState(false);
+
+  const [
+    erroConclusao,
+    setErroConclusao,
+  ] = useState('');
+
+  const [
+    modalConclusaoVisivel,
+    setModalConclusaoVisivel,
+  ] = useState(false);
+
   const activeSectionIndex =
     SECTIONS.findIndex(
       (section) =>
-        section.key === activeSection
+        section.key ===
+        activeSection
     );
 
   const activeSectionConfig =
-    SECTIONS[activeSectionIndex];
+    SECTIONS[
+      activeSectionIndex
+    ];
+
+  /**
+   * Representa somente a posição atual
+   * dentro das dez etapas.
+   *
+   * Não significa que todos os campos
+   * anteriores estão válidos.
+   */
+  const percentualNavegacao =
+    Math.round(
+      ((activeSectionIndex + 1) /
+        SECTIONS.length) *
+        100
+    );
 
   function voltar() {
     router.back();
   }
 
   function irParaAnterior() {
-    if (activeSectionIndex <= 0) {
+    if (
+      activeSectionIndex <= 0
+    ) {
       return;
     }
 
@@ -180,10 +448,16 @@ function FichaSaeScreenContent() {
     );
   }
 
+  /**
+   * TODO(BACKEND):
+   * Quando houver persistência de rascunho,
+   * sair da tela não deverá necessariamente
+   * apagar o preenchimento.
+   */
   function cancelarFicha() {
     Alert.alert(
-      'Cancelar Ficha SAE',
-      'Deseja sair da ficha? Os dados preenchidos nesta sessão serão apagados.',
+      'Sair da Ficha SAE',
+      'Deseja sair do preenchimento? Os dados alterados nesta sessão ainda não possuem persistência definitiva.',
       [
         {
           text: 'Continuar preenchendo',
@@ -202,23 +476,84 @@ function FichaSaeScreenContent() {
     );
   }
 
+  /**
+   * Abre a confirmação própria da Ficha SAE.
+   *
+   * Não utilizamos Alert para a conclusão,
+   * porque a operação precisa funcionar da
+   * mesma forma no mobile e no Web.
+   */
   function concluirFicha() {
-    /*
-     * Temporário.
-     *
-     * Não vamos inventar a chamada para
-     * o backend antes de conhecermos o
-     * endpoint e o contrato real.
-     */
-    console.log(
-      'Ficha SAE preenchida:',
-      state
+    if (concluindo) {
+      return;
+    }
+
+    setErroConclusao('');
+
+    setModalConclusaoVisivel(
+      true
+    );
+  }
+
+  /**
+   * Confirma a conclusão da ficha.
+   *
+   * Somente após o service confirmar
+   * a operação retornamos para a ocorrência.
+   */
+  async function confirmarConclusao() {
+    if (concluindo) {
+      return;
+    }
+
+    try {
+      setConcluindo(true);
+
+      setErroConclusao('');
+
+      await fichaSaeService.marcarComoConcluida(
+        chamadoId
+      );
+
+      setModalConclusaoVisivel(
+        false
+      );
+
+      /**
+       * Ao retornar para a ocorrência,
+       * o botão "Finalizar ocorrência"
+       * poderá consultar novamente o service
+       * e encontrar:
+       *
+       * statusFicha = "concluida"
+       */
+      router.back();
+    } catch (error) {
+      console.error(
+        'Erro ao concluir Ficha SAE:',
+        error
+      );
+
+      setErroConclusao(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível concluir a Ficha SAE.'
+      );
+    } finally {
+      setConcluindo(false);
+    }
+  }
+
+  function cancelarConclusao() {
+    if (concluindo) {
+      return;
+    }
+
+    setModalConclusaoVisivel(
+      false
     );
 
-    Alert.alert(
-      'Ficha SAE preenchida',
-      'O formulário está funcionando no frontend. O envio definitivo será conectado ao backend posteriormente.'
-    );
+    setErroConclusao('');
   }
 
   function renderActiveSection() {
@@ -286,7 +621,9 @@ function FichaSaeScreenContent() {
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={
+            styles.backButton
+          }
           onPress={voltar}
         >
           <Ionicons
@@ -302,7 +639,9 @@ function FichaSaeScreenContent() {
           }
         >
           <Text
-            style={styles.headerTitle}
+            style={
+              styles.headerTitle
+            }
           >
             Ficha SAE
           </Text>
@@ -312,13 +651,17 @@ function FichaSaeScreenContent() {
               styles.headerSubtitle
             }
           >
-            Ocorrência #{id ?? '-'}
+            Ocorrência #{chamadoId}
           </Text>
         </View>
 
         <TouchableOpacity
-          style={styles.closeButton}
-          onPress={cancelarFicha}
+          style={
+            styles.closeButton
+          }
+          onPress={
+            cancelarFicha
+          }
         >
           <Ionicons
             name="close"
@@ -356,28 +699,21 @@ function FichaSaeScreenContent() {
               styles.progressPercentage
             }
           >
-            {Math.round(
-              ((activeSectionIndex + 1) /
-                SECTIONS.length) *
-                100
-            )}
-            %
+            {percentualNavegacao}%
           </Text>
         </View>
 
         <View
-          style={styles.progressTrack}
+          style={
+            styles.progressTrack
+          }
         >
           <View
             style={[
               styles.progressBar,
               {
-                width: `${
-                  ((activeSectionIndex +
-                    1) /
-                    SECTIONS.length) *
-                  100
-                }%`,
+                width:
+                  `${percentualNavegacao}%`,
               },
             ]}
           />
@@ -400,18 +736,16 @@ function FichaSaeScreenContent() {
           }
         >
           {SECTIONS.map(
-            (section, index) => {
+            (section) => {
               const isActive =
                 section.key ===
                 activeSection;
 
-              const isPrevious =
-                index <
-                activeSectionIndex;
-
               return (
                 <TouchableOpacity
-                  key={section.key}
+                  key={
+                    section.key
+                  }
                   style={[
                     styles.sectionButton,
 
@@ -424,16 +758,6 @@ function FichaSaeScreenContent() {
                     )
                   }
                 >
-                  {isPrevious && (
-                    <Ionicons
-                      name="ellipse"
-                      size={7}
-                      color={
-                        Colors.success
-                      }
-                    />
-                  )}
-
                   <Text
                     style={[
                       styles.sectionButtonText,
@@ -455,7 +779,9 @@ function FichaSaeScreenContent() {
 
       {/* CONTEÚDO */}
       <ScrollView
-        style={styles.contentScroll}
+        style={
+          styles.contentScroll
+        }
         contentContainerStyle={
           styles.content
         }
@@ -476,7 +802,10 @@ function FichaSaeScreenContent() {
           >
             {String(
               activeSectionIndex + 1
-            ).padStart(2, '0')}
+            ).padStart(
+              2,
+              '0'
+            )}
           </Text>
 
           <View
@@ -505,6 +834,30 @@ function FichaSaeScreenContent() {
           </View>
         </View>
 
+        {erroConclusao ? (
+          <View
+            style={
+              styles.errorConclusionBox
+            }
+          >
+            <Ionicons
+              name="alert-circle-outline"
+              size={19}
+              color={
+                Colors.danger
+              }
+            />
+
+            <Text
+              style={
+                styles.errorConclusionText
+              }
+            >
+              {erroConclusao}
+            </Text>
+          </View>
+        ) : null}
+
         {renderActiveSection()}
       </ScrollView>
 
@@ -514,19 +867,24 @@ function FichaSaeScreenContent() {
           style={[
             styles.previousButton,
 
-            activeSectionIndex === 0 &&
+            activeSectionIndex ===
+              0 &&
               styles.buttonDisabled,
           ]}
           disabled={
-            activeSectionIndex === 0
+            activeSectionIndex ===
+            0
           }
-          onPress={irParaAnterior}
+          onPress={
+            irParaAnterior
+          }
         >
           <Ionicons
             name="arrow-back"
             size={18}
             color={
-              activeSectionIndex === 0
+              activeSectionIndex ===
+              0
                 ? Colors.disabled
                 : Colors.primary
             }
@@ -548,8 +906,12 @@ function FichaSaeScreenContent() {
         {activeSectionIndex <
         SECTIONS.length - 1 ? (
           <TouchableOpacity
-            style={styles.nextButton}
-            onPress={irParaProxima}
+            style={
+              styles.nextButton
+            }
+            onPress={
+              irParaProxima
+            }
           >
             <Text
               style={
@@ -569,283 +931,419 @@ function FichaSaeScreenContent() {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            style={
-              styles.finishButton
-            }
-            onPress={concluirFicha}
-          >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={20}
-              color={
-                Colors.background
-              }
-            />
+            style={[
+              styles.finishButton,
 
-            <Text
-              style={
-                styles.finishButtonText
-              }
-            >
-              Concluir Ficha
-            </Text>
+              concluindo &&
+                styles.finishButtonDisabled,
+            ]}
+            onPress={
+              concluirFicha
+            }
+            disabled={
+              concluindo
+            }
+          >
+            {concluindo ? (
+              <>
+                <ActivityIndicator
+                  size="small"
+                  color={
+                    Colors.background
+                  }
+                />
+
+                <Text
+                  style={
+                    styles.finishButtonText
+                  }
+                >
+                  Concluindo...
+                </Text>
+              </>
+            ) : (
+              <>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={20}
+                  color={
+                    Colors.background
+                  }
+                />
+
+                <Text
+                  style={
+                    styles.finishButtonText
+                  }
+                >
+                  Concluir Ficha
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         )}
       </View>
+
+      {/* CONFIRMAÇÃO DE CONCLUSÃO */}
+      <ConcluirFichaModal
+        visible={
+          modalConclusaoVisivel
+        }
+        concluindo={
+          concluindo
+        }
+        erro={
+          erroConclusao
+        }
+        onCancel={
+          cancelarConclusao
+        }
+        onConfirm={() => {
+          void confirmarConclusao();
+        }}
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor:
-      Colors.surfaceMuted,
-  },
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor:
+        Colors.surfaceMuted,
+    },
 
-  // HEADER
-  header: {
-    minHeight: 64,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor:
-      Colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor:
-      Colors.border,
-  },
+    loadingContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    loadingText: {
+      marginTop: 12,
+      color:
+        Colors.textSecondary,
+      fontSize: 13,
+    },
 
-  headerTextContainer: {
-    flex: 1,
-    marginLeft: 4,
-  },
+    errorContainer: {
+      flex: 1,
+      paddingHorizontal: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  headerTitle: {
-    color: Colors.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
+    errorTitle: {
+      marginTop: 12,
+      color:
+        Colors.text,
+      fontSize: 18,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
 
-  headerSubtitle: {
-    marginTop: 2,
-    color:
-      Colors.textSecondary,
-    fontSize: 11,
-  },
+    errorText: {
+      marginTop: 7,
+      color:
+        Colors.textSecondary,
+      fontSize: 13,
+      lineHeight: 19,
+      textAlign: 'center',
+    },
 
-  closeButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    errorButton: {
+      minHeight: 48,
+      marginTop: 20,
+      paddingHorizontal: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        Colors.primary,
+      borderRadius: 12,
+    },
 
-  // PROGRESSO
-  progressContainer: {
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 10,
-    backgroundColor:
-      Colors.background,
-  },
+    errorButtonText: {
+      color:
+        Colors.background,
+      fontSize: 13,
+      fontWeight: '800',
+    },
 
-  progressHeader: {
-    marginBottom: 7,
-    flexDirection: 'row',
-    justifyContent:
-      'space-between',
-  },
+    header: {
+      minHeight: 64,
+      paddingHorizontal: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor:
+        Colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor:
+        Colors.border,
+    },
 
-  progressText: {
-    color:
-      Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '600',
-  },
+    backButton: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  progressPercentage: {
-    color: Colors.primary,
-    fontSize: 11,
-    fontWeight: '800',
-  },
+    headerTextContainer: {
+      flex: 1,
+      marginLeft: 4,
+    },
 
-  progressTrack: {
-    height: 5,
-    overflow: 'hidden',
-    backgroundColor:
-      Colors.surfaceSecondary,
-    borderRadius: 10,
-  },
+    headerTitle: {
+      color:
+        Colors.text,
+      fontSize: 18,
+      fontWeight: '800',
+    },
 
-  progressBar: {
-    height: '100%',
-    backgroundColor:
-      Colors.primary,
-    borderRadius: 10,
-  },
+    headerSubtitle: {
+      marginTop: 2,
+      color:
+        Colors.textSecondary,
+      fontSize: 11,
+    },
 
-  // NAVEGAÇÃO DAS ETAPAS
-  sectionsContainer: {
-    backgroundColor:
-      Colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor:
-      Colors.border,
-  },
+    closeButton: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  sectionsScroll: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 7,
-  },
+    progressContainer: {
+      paddingHorizontal: 18,
+      paddingTop: 12,
+      paddingBottom: 10,
+      backgroundColor:
+        Colors.background,
+    },
 
-  sectionButton: {
-    minHeight: 34,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor:
-      Colors.surfaceSecondary,
-    borderRadius: 18,
-  },
+    progressHeader: {
+      marginBottom: 7,
+      flexDirection: 'row',
+      justifyContent:
+        'space-between',
+    },
 
-  sectionButtonActive: {
-    backgroundColor:
-      Colors.primary,
-  },
+    progressText: {
+      color:
+        Colors.textSecondary,
+      fontSize: 11,
+      fontWeight: '600',
+    },
 
-  sectionButtonText: {
-    color:
-      Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
-  },
+    progressPercentage: {
+      color:
+        Colors.primary,
+      fontSize: 11,
+      fontWeight: '800',
+    },
 
-  sectionButtonTextActive: {
-    color: Colors.background,
-  },
+    progressTrack: {
+      height: 5,
+      overflow: 'hidden',
+      backgroundColor:
+        Colors.surfaceSecondary,
+      borderRadius: 10,
+    },
 
-  // CONTEÚDO
-  contentScroll: {
-    flex: 1,
-  },
+    progressBar: {
+      height: '100%',
+      backgroundColor:
+        Colors.primary,
+      borderRadius: 10,
+    },
 
-  content: {
-    padding: 18,
-    paddingBottom: 30,
-  },
+    sectionsContainer: {
+      backgroundColor:
+        Colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor:
+        Colors.border,
+    },
 
-  sectionHeading: {
-    marginBottom: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+    sectionsScroll: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      gap: 7,
+    },
 
-  sectionNumber: {
-    width: 45,
-    color: Colors.primary,
-    fontSize: 28,
-    fontWeight: '900',
-  },
+    sectionButton: {
+      minHeight: 34,
+      paddingHorizontal: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor:
+        Colors.surfaceSecondary,
+      borderRadius: 18,
+    },
 
-  sectionHeadingText: {
-    flex: 1,
-  },
+    sectionButtonActive: {
+      backgroundColor:
+        Colors.primary,
+    },
 
-  sectionTitle: {
-    color: Colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
+    sectionButtonText: {
+      color:
+        Colors.textSecondary,
+      fontSize: 11,
+      fontWeight: '700',
+    },
 
-  sectionDescription: {
-    marginTop: 3,
-    color:
-      Colors.textSecondary,
-    fontSize: 12,
-  },
+    sectionButtonTextActive: {
+      color:
+        Colors.background,
+    },
 
-  // FOOTER
-  footer: {
-    minHeight: 76,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent:
-      'space-between',
-    backgroundColor:
-      Colors.background,
-    borderTopWidth: 1,
-    borderTopColor:
-      Colors.border,
-  },
+    contentScroll: {
+      flex: 1,
+    },
 
-  previousButton: {
-    minHeight: 46,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 13,
-  },
+    content: {
+      padding: 18,
+      paddingBottom: 30,
+    },
 
-  previousButtonText: {
-    color: Colors.primary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
+    sectionHeading: {
+      marginBottom: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
 
-  previousButtonTextDisabled: {
-    color: Colors.disabled,
-  },
+    sectionNumber: {
+      width: 45,
+      color:
+        Colors.primary,
+      fontSize: 28,
+      fontWeight: '900',
+    },
 
-  buttonDisabled: {
-    opacity: 0.6,
-  },
+    sectionHeadingText: {
+      flex: 1,
+    },
 
-  nextButton: {
-    minHeight: 46,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor:
-      Colors.primary,
-    borderRadius: 13,
-  },
+    sectionTitle: {
+      color:
+        Colors.text,
+      fontSize: 20,
+      fontWeight: '800',
+    },
 
-  nextButtonText: {
-    color: Colors.background,
-    fontSize: 14,
-    fontWeight: '800',
-  },
+    sectionDescription: {
+      marginTop: 3,
+      color:
+        Colors.textSecondary,
+      fontSize: 12,
+    },
 
-  finishButton: {
-    minHeight: 46,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor:
-      Colors.success,
-    borderRadius: 13,
-  },
+    errorConclusionBox: {
+      marginBottom: 16,
+      padding: 12,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      backgroundColor:
+        Colors.dangerSurface,
+      borderWidth: 1,
+      borderColor:
+        Colors.danger,
+      borderRadius: 10,
+    },
 
-  finishButtonText: {
-    color: Colors.background,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-});
+    errorConclusionText: {
+      flex: 1,
+      color:
+        Colors.danger,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+
+    footer: {
+      minHeight: 76,
+      paddingHorizontal: 18,
+      paddingVertical: 11,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'space-between',
+      backgroundColor:
+        Colors.background,
+      borderTopWidth: 1,
+      borderTopColor:
+        Colors.border,
+    },
+
+    previousButton: {
+      minHeight: 46,
+      paddingHorizontal: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      borderWidth: 1,
+      borderColor:
+        Colors.border,
+      borderRadius: 13,
+    },
+
+    previousButtonText: {
+      color:
+        Colors.primary,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+
+    previousButtonTextDisabled: {
+      color:
+        Colors.disabled,
+    },
+
+    buttonDisabled: {
+      opacity: 0.6,
+    },
+
+    nextButton: {
+      minHeight: 46,
+      paddingHorizontal: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor:
+        Colors.primary,
+      borderRadius: 13,
+    },
+
+    nextButtonText: {
+      color:
+        Colors.background,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+
+    finishButton: {
+      minHeight: 46,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor:
+        Colors.success,
+      borderRadius: 13,
+    },
+
+    finishButtonDisabled: {
+      opacity: 0.65,
+    },
+
+    finishButtonText: {
+      color:
+        Colors.background,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+  });
