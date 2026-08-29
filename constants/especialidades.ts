@@ -1,0 +1,17 @@
+export const ESPECIALIDADES = [
+  'Clínica Médica',
+  'Pediatria',
+  'Cirurgia Geral',
+  'Ortopedia',
+  'Cardiologia',
+  'Neurologia',
+  'Medicina de Emergência',
+  'Anestesiologia',
+  'Medicina Intensiva',
+  'Ginecologia e Obstetrícia',
+  'Psiquiatria',
+  'Infectologia',
+  'Pneumologia',
+  'Nefrologia',
+  'Gastroenterologia',
+] as const;

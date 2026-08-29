@@ -5,34 +5,74 @@ import {
   useState,
 } from 'react';
 
-type DadosPessoais = {
+/**
+ * Dados pessoais coletados na primeira etapa
+ * do cadastro.
+ *
+ * Estes dados representam o modelo interno do frontend.
+ * O formato enviado futuramente para a API poderá ser
+ * adaptado por um service/mapper.
+ */
+export type DadosPessoais = {
   nome: string;
   email: string;
   cpf: string;
   telefone: string;
 };
 
-type DadosProfissionais = {
-  crm: string;
+/**
+ * Dados profissionais utilizados por profissionais
+ * de diferentes áreas da equipe multidisciplinar.
+ *
+ * O cadastro NÃO deve assumir que todo profissional
+ * possui CRM.
+ *
+ * Exemplos:
+ *
+ * Medicina
+ * conselho: CRM
+ *
+ * Enfermagem
+ * conselho: COREN
+ *
+ * Fisioterapia
+ * conselho: CREFITO
+ *
+ * TODO(BACKEND):
+ * Profissões, conselhos e unidades poderão futuramente
+ * ser carregados da API em vez de serem definidos
+ * diretamente pelo frontend.
+ */
+export type DadosProfissionais = {
+  profissao: string;
+  conselho: string;
+  registro: string;
   uf: string;
   unidade: string;
 };
 
 type CadastroContextData = {
   dadosPessoais: DadosPessoais;
+
   dadosProfissionais: DadosProfissionais;
-  especialidades: string[];
+
+  /**
+   * Utilizamos "áreas de atuação" em vez de
+   * "especialidades médicas" para contemplar
+   * toda a equipe multidisciplinar.
+   */
+  areasAtuacao: string[];
 
   atualizarDadosPessoais: (
-    dados: Partial<DadosPessoais>,
+    dados: Partial<DadosPessoais>
   ) => void;
 
   atualizarDadosProfissionais: (
-    dados: Partial<DadosProfissionais>,
+    dados: Partial<DadosProfissionais>
   ) => void;
 
-  atualizarEspecialidades: (
-    especialidades: string[],
+  atualizarAreasAtuacao: (
+    areas: string[]
   ) => void;
 
   limparCadastro: () => void;
@@ -50,68 +90,127 @@ const dadosPessoaisIniciais: DadosPessoais = {
 };
 
 const dadosProfissionaisIniciais: DadosProfissionais = {
-  crm: '',
+  profissao: '',
+  conselho: '',
+  registro: '',
   uf: '',
   unidade: '',
 };
 
 const CadastroContext =
   createContext<CadastroContextData | undefined>(
-    undefined,
+    undefined
   );
 
+/**
+ * Provider responsável por manter temporariamente
+ * os dados preenchidos durante o fluxo de cadastro.
+ *
+ * Exemplo:
+ *
+ * dados-pessoais
+ *      ↓
+ * dados-profissionais
+ *      ↓
+ * áreas de atuação
+ *      ↓
+ * envio final
+ *
+ * O Context NÃO deve realizar chamadas HTTP.
+ *
+ * Sua responsabilidade é apenas preservar os dados
+ * entre as etapas do formulário.
+ *
+ * Fluxo futuro:
+ *
+ * Telas
+ *   ↓
+ * CadastroContext
+ *   ↓
+ * CadastroService
+ *   ↓
+ * API
+ *
+ * A chamada ao CadastroService acontecerá apenas
+ * quando o usuário concluir todas as etapas.
+ */
 export function CadastroProvider({
   children,
 }: CadastroProviderProps) {
-  const [dadosPessoais, setDadosPessoais] =
-    useState<DadosPessoais>(
-      dadosPessoaisIniciais,
-    );
+  const [
+    dadosPessoais,
+    setDadosPessoais,
+  ] = useState<DadosPessoais>(
+    dadosPessoaisIniciais
+  );
 
   const [
     dadosProfissionais,
     setDadosProfissionais,
   ] = useState<DadosProfissionais>(
-    dadosProfissionaisIniciais,
+    dadosProfissionaisIniciais
   );
 
   const [
-    especialidades,
-    setEspecialidades,
+    areasAtuacao,
+    setAreasAtuacao,
   ] = useState<string[]>([]);
 
+  /**
+   * Atualiza apenas os campos recebidos,
+   * preservando os demais dados já preenchidos.
+   */
   function atualizarDadosPessoais(
-    dados: Partial<DadosPessoais>,
+    dados: Partial<DadosPessoais>
   ) {
-    setDadosPessoais((dadosAtuais) => ({
-      ...dadosAtuais,
-      ...dados,
-    }));
+    setDadosPessoais(
+      (dadosAtuais) => ({
+        ...dadosAtuais,
+        ...dados,
+      })
+    );
   }
 
+  /**
+   * Atualiza os dados profissionais sem assumir
+   * um conselho específico.
+   */
   function atualizarDadosProfissionais(
-    dados: Partial<DadosProfissionais>,
+    dados: Partial<DadosProfissionais>
   ) {
-    setDadosProfissionais((dadosAtuais) => ({
-      ...dadosAtuais,
-      ...dados,
-    }));
-  }
-
-  function atualizarEspecialidades(
-    novasEspecialidades: string[],
-  ) {
-    setEspecialidades(novasEspecialidades);
-  }
-
-  function limparCadastro() {
-    setDadosPessoais(dadosPessoaisIniciais);
-
     setDadosProfissionais(
-      dadosProfissionaisIniciais,
+      (dadosAtuais) => ({
+        ...dadosAtuais,
+        ...dados,
+      })
+    );
+  }
+
+  /**
+   * Substitui as áreas selecionadas pelo profissional.
+   */
+  function atualizarAreasAtuacao(
+    novasAreas: string[]
+  ) {
+    setAreasAtuacao(novasAreas);
+  }
+
+  /**
+   * Limpa todo o cadastro.
+   *
+   * Deve ser usado após uma conclusão bem-sucedida
+   * ou quando for necessário reiniciar o fluxo.
+   */
+  function limparCadastro() {
+    setDadosPessoais(
+      dadosPessoaisIniciais
     );
 
-    setEspecialidades([]);
+    setDadosProfissionais(
+      dadosProfissionaisIniciais
+    );
+
+    setAreasAtuacao([]);
   }
 
   return (
@@ -119,10 +218,10 @@ export function CadastroProvider({
       value={{
         dadosPessoais,
         dadosProfissionais,
-        especialidades,
+        areasAtuacao,
         atualizarDadosPessoais,
         atualizarDadosProfissionais,
-        atualizarEspecialidades,
+        atualizarAreasAtuacao,
         limparCadastro,
       }}
     >
@@ -131,12 +230,19 @@ export function CadastroProvider({
   );
 }
 
+/**
+ * Hook utilizado pelas telas do fluxo de cadastro.
+ *
+ * Garante que o contexto seja usado somente
+ * dentro de CadastroProvider.
+ */
 export function useCadastro() {
-  const context = useContext(CadastroContext);
+  const context =
+    useContext(CadastroContext);
 
   if (!context) {
     throw new Error(
-      'useCadastro deve ser utilizado dentro de CadastroProvider',
+      'useCadastro deve ser utilizado dentro de CadastroProvider.'
     );
   }
 

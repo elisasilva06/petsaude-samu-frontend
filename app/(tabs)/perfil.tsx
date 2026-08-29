@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useState } from 'react';
 
 import {
-  Alert,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,56 +15,261 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 
-import { perfilProfissionalMock } from '@/features/perfil/mocks';
+import {
+  LogoutConfirmModal,
+} from '@/features/auth/components/LogoutConfirmModal';
 
+import {
+  useAuth,
+} from '@/features/auth/context/AuthContext';
+
+import {
+  usePerfil,
+} from '@/features/perfil/context/PerfilContext';
+
+/**
+ * Tela principal do perfil profissional.
+ *
+ * O perfil é multiprofissional e não assume
+ * que o usuário seja médico.
+ *
+ * Fluxo:
+ *
+ * PerfilScreen
+ *      ↓
+ * PerfilContext
+ *      ↓
+ * perfilService
+ *      ↓
+ * mock atualmente
+ *      ↓
+ * API futuramente
+ */
 export default function PerfilScreen() {
-  const perfil = perfilProfissionalMock;
+  const {
+    perfil,
+    carregandoPerfil,
+    erroPerfil,
+    recarregarPerfil,
+  } = usePerfil();
+
+  const { logout } = useAuth();
+
+  const [
+    saindo,
+    setSaindo,
+  ] = useState(false);
+
+  const [
+    mostrarConfirmacaoLogout,
+    setMostrarConfirmacaoLogout,
+  ] = useState(false);
+
+  const [
+    erroLogout,
+    setErroLogout,
+  ] = useState<string | null>(
+    null
+  );
+
+  function editarPerfil() {
+    router.push('/editar-perfil');
+  }
+
+  function alterarSenha() {
+    router.push('/alterar-senha');
+  }
 
   function sair() {
-    Alert.alert(
-      'Sair da conta',
-      'Deseja realmente sair?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: () => {
-            /*
-             * Temporário.
-             *
-             * Quando integrarmos autenticação,
-             * o logout real será feito aqui.
-             */
-            router.replace('/');
-          },
-        },
-      ]
+    if (saindo) {
+      return;
+    }
+
+    setErroLogout(null);
+
+    setMostrarConfirmacaoLogout(
+      true
     );
   }
+
+  function cancelarLogout() {
+    if (saindo) {
+      return;
+    }
+
+    setErroLogout(null);
+
+    setMostrarConfirmacaoLogout(
+      false
+    );
+  }
+
+  /**
+   * Encerra a sessão global.
+   */
+  async function executarLogout() {
+    try {
+      setSaindo(true);
+      setErroLogout(null);
+
+      await logout();
+
+      setMostrarConfirmacaoLogout(
+        false
+      );
+
+      router.replace('/');
+    } catch (error) {
+      console.error(
+        'Erro ao encerrar sessão:',
+        error
+      );
+
+      setErroLogout(
+        'Não foi possível encerrar a sessão. Tente novamente.'
+      );
+    } finally {
+      setSaindo(false);
+    }
+  }
+
+  if (carregandoPerfil) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
+        <View
+          style={
+            styles.loadingContainer
+          }
+        >
+          <ActivityIndicator
+            size="large"
+            color={Colors.primary}
+          />
+
+          <Text
+            style={
+              styles.loadingText
+            }
+          >
+            Carregando perfil...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (erroPerfil || !perfil) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
+        <View
+          style={
+            styles.errorContainer
+          }
+        >
+          <View
+            style={styles.errorIcon}
+          >
+            <Ionicons
+              name="alert-circle-outline"
+              size={32}
+              color={Colors.danger}
+            />
+          </View>
+
+          <Text
+            style={
+              styles.errorTitle
+            }
+          >
+            Não foi possível carregar o perfil
+          </Text>
+
+          <Text
+            style={
+              styles.errorDescription
+            }
+          >
+            {erroPerfil ??
+              'Tente carregar os dados novamente.'}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() =>
+              void recarregarPerfil()
+            }
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="refresh-outline"
+              size={18}
+              color={
+                Colors.background
+              }
+            />
+
+            <Text
+              style={
+                styles.retryButtonText
+              }
+            >
+              Tentar novamente
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const registroCompleto = [
+    perfil.conselho,
+    perfil.registro,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const registroComUf =
+    perfil.uf
+      ? `${registroCompleto}/${perfil.uf}`
+      : registroCompleto;
 
   return (
     <SafeAreaView
       style={styles.container}
       edges={['top']}
     >
+      {/* CABEÇALHO */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>
+          <Text
+            style={
+              styles.headerTitle
+            }
+          >
             Perfil
           </Text>
 
-          <Text style={styles.headerSubtitle}>
+          <Text
+            style={
+              styles.headerSubtitle
+            }
+          >
             Dados do profissional
           </Text>
         </View>
 
         <TouchableOpacity
           style={styles.editButton}
+          onPress={editarPerfil}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Editar perfil"
         >
           <Ionicons
             name="create-outline"
@@ -74,16 +280,24 @@ export default function PerfilScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={
+          styles.content
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
       >
-        {/* PROFISSIONAL */}
-        <View style={styles.profileCard}>
+        {/* RESUMO */}
+        <View
+          style={styles.profileCard}
+        >
           <View style={styles.avatar}>
             <Ionicons
               name="person"
               size={34}
-              color={Colors.background}
+              color={
+                Colors.background
+              }
             />
           </View>
 
@@ -92,13 +306,23 @@ export default function PerfilScreen() {
           </Text>
 
           <Text style={styles.role}>
-            {perfil.cargo}
+            {perfil.profissao}
+          </Text>
+
+          <Text
+            style={
+              styles.registration
+            }
+          >
+            {registroComUf}
           </Text>
 
           <View
             style={[
               styles.statusBadge,
-              perfil.status === 'disponivel'
+
+              perfil.status ===
+              'disponivel'
                 ? styles.availableBadge
                 : styles.unavailableBadge,
             ]}
@@ -106,7 +330,9 @@ export default function PerfilScreen() {
             <View
               style={[
                 styles.statusDot,
-                perfil.status === 'disponivel'
+
+                perfil.status ===
+                'disponivel'
                   ? styles.availableDot
                   : styles.unavailableDot,
               ]}
@@ -115,12 +341,15 @@ export default function PerfilScreen() {
             <Text
               style={[
                 styles.statusText,
-                perfil.status === 'disponivel'
+
+                perfil.status ===
+                'disponivel'
                   ? styles.availableText
                   : styles.unavailableText,
               ]}
             >
-              {perfil.status === 'disponivel'
+              {perfil.status ===
+              'disponivel'
                 ? 'Disponível'
                 : 'Indisponível'}
             </Text>
@@ -128,12 +357,20 @@ export default function PerfilScreen() {
         </View>
 
         {/* PLANTÃO */}
-        <Text style={styles.sectionTitle}>
+        <Text
+          style={
+            styles.sectionTitle
+          }
+        >
           Plantão atual
         </Text>
 
-        <View style={styles.shiftCard}>
-          <View style={styles.shiftIcon}>
+        <View
+          style={styles.shiftCard}
+        >
+          <View
+            style={styles.shiftIcon}
+          >
             <Ionicons
               name="time-outline"
               size={22}
@@ -141,30 +378,59 @@ export default function PerfilScreen() {
             />
           </View>
 
-          <View style={styles.shiftInfo}>
-            <Text style={styles.shiftLabel}>
+          <View
+            style={styles.shiftInfo}
+          >
+            <Text
+              style={
+                styles.shiftLabel
+              }
+            >
               Horário
             </Text>
 
-            <Text style={styles.shiftValue}>
-              {perfil.plantao.inicio} -{' '}
+            <Text
+              style={
+                styles.shiftValue
+              }
+            >
+              {perfil.plantao.inicio}
+              {' - '}
               {perfil.plantao.fim}
             </Text>
           </View>
 
-          <View style={styles.shiftStatus}>
-            <Text style={styles.shiftStatusText}>
+          <View
+            style={
+              styles.shiftStatus
+            }
+          >
+            <Text
+              style={
+                styles.shiftStatusText
+              }
+            >
               Em plantão
             </Text>
           </View>
         </View>
 
         {/* DADOS PESSOAIS */}
-        <Text style={styles.sectionTitle}>
+        <Text
+          style={
+            styles.sectionTitle
+          }
+        >
           Dados pessoais
         </Text>
 
         <View style={styles.card}>
+          <InfoRow
+            icon="person-outline"
+            label="Nome completo"
+            value={perfil.nome}
+          />
+
           <InfoRow
             icon="mail-outline"
             label="E-mail"
@@ -172,29 +438,51 @@ export default function PerfilScreen() {
           />
 
           <InfoRow
-            icon="call-outline"
-            label="Telefone"
-            value={perfil.telefone}
-          />
-
-          <InfoRow
             icon="card-outline"
             label="CPF"
             value={perfil.cpf}
+          />
+
+          <InfoRow
+            icon="call-outline"
+            label="Telefone"
+            value={perfil.telefone}
             last
           />
         </View>
 
         {/* DADOS PROFISSIONAIS */}
-        <Text style={styles.sectionTitle}>
+        <Text
+          style={
+            styles.sectionTitle
+          }
+        >
           Dados profissionais
         </Text>
 
         <View style={styles.card}>
           <InfoRow
+            icon="briefcase-outline"
+            label="Profissão"
+            value={
+              perfil.profissao
+            }
+          />
+
+          <InfoRow
+            icon="ribbon-outline"
+            label="Conselho profissional"
+            value={
+              perfil.conselho
+            }
+          />
+
+          <InfoRow
             icon="medkit-outline"
-            label="Registro"
-            value={perfil.registro}
+            label="Registro profissional"
+            value={
+              perfil.registro
+            }
           />
 
           <InfoRow
@@ -211,38 +499,71 @@ export default function PerfilScreen() {
           />
         </View>
 
-        {/* ESPECIALIDADES */}
-        <Text style={styles.sectionTitle}>
-          Especialidades
+        {/* ÁREAS DE ATUAÇÃO */}
+        <Text
+          style={
+            styles.sectionTitle
+          }
+        >
+          Áreas de atuação
         </Text>
 
-        <View style={styles.specialtiesCard}>
-          <View style={styles.specialties}>
-            {perfil.especialidades.map(
-              (especialidade) => (
-                <View
-                  key={especialidade}
-                  style={styles.specialtyBadge}
-                >
-                  <Ionicons
-                    name="medical-outline"
-                    size={14}
-                    color={Colors.primary}
-                  />
-
-                  <Text
-                    style={styles.specialtyText}
+        <View
+          style={
+            styles.specialtiesCard
+          }
+        >
+          {perfil.areasAtuacao
+            .length > 0 ? (
+            <View
+              style={
+                styles.specialties
+              }
+            >
+              {perfil.areasAtuacao.map(
+                (area) => (
+                  <View
+                    key={area}
+                    style={
+                      styles.specialtyBadge
+                    }
                   >
-                    {especialidade}
-                  </Text>
-                </View>
-              )
-            )}
-          </View>
+                    <Ionicons
+                      name="medical-outline"
+                      size={14}
+                      color={
+                        Colors.primary
+                      }
+                    />
+
+                    <Text
+                      style={
+                        styles.specialtyText
+                      }
+                    >
+                      {area}
+                    </Text>
+                  </View>
+                )
+              )}
+            </View>
+          ) : (
+            <Text
+              style={
+                styles.emptyText
+              }
+            >
+              Nenhuma área de atuação cadastrada.
+            </Text>
+          )}
         </View>
 
         {/* CONTA */}
-        <Text style={styles.sectionTitle}>
+        <Text
+          style={
+            styles.sectionTitle
+          }
+        >
           Conta
         </Text>
 
@@ -250,17 +571,44 @@ export default function PerfilScreen() {
           <TouchableOpacity
             style={styles.actionRow}
             activeOpacity={0.8}
+            onPress={alterarSenha}
           >
-            <View style={styles.actionLeft}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color={Colors.primary}
-              />
+            <View
+              style={
+                styles.actionLeft
+              }
+            >
+              <View
+                style={
+                  styles.actionIcon
+                }
+              >
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={19}
+                  color={
+                    Colors.primary
+                  }
+                />
+              </View>
 
-              <Text style={styles.actionText}>
-                Alterar senha
-              </Text>
+              <View>
+                <Text
+                  style={
+                    styles.actionText
+                  }
+                >
+                  Alterar senha
+                </Text>
+
+                <Text
+                  style={
+                    styles.actionDescription
+                  }
+                >
+                  Atualize sua senha de acesso
+                </Text>
+              </View>
             </View>
 
             <Ionicons
@@ -271,22 +619,88 @@ export default function PerfilScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* EDITAR */}
         <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={sair}
+          style={
+            styles.secondaryButton
+          }
+          onPress={editarPerfil}
           activeOpacity={0.8}
         >
           <Ionicons
-            name="log-out-outline"
-            size={20}
-            color={Colors.danger}
+            name="create-outline"
+            size={19}
+            color={Colors.primary}
           />
 
-          <Text style={styles.logoutText}>
-            Sair da conta
+          <Text
+            style={
+              styles.secondaryButtonText
+            }
+          >
+            Editar meus dados
           </Text>
         </TouchableOpacity>
+
+        {/* LOGOUT */}
+        <TouchableOpacity
+          style={[
+            styles.logoutButton,
+            saindo &&
+              styles.logoutButtonDisabled,
+          ]}
+          onPress={sair}
+          disabled={saindo}
+          activeOpacity={0.8}
+        >
+          {saindo ? (
+            <>
+              <ActivityIndicator
+                size="small"
+                color={Colors.danger}
+              />
+
+              <Text
+                style={
+                  styles.logoutText
+                }
+              >
+                Saindo...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Ionicons
+                name="log-out-outline"
+                size={20}
+                color={Colors.danger}
+              />
+
+              <Text
+                style={
+                  styles.logoutText
+                }
+              >
+                Sair da conta
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
       </ScrollView>
+
+      <LogoutConfirmModal
+        visible={
+          mostrarConfirmacaoLogout
+        }
+        loading={saindo}
+        error={erroLogout}
+        onCancel={
+          cancelarLogout
+        }
+        onConfirm={() => {
+          void executarLogout();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -308,10 +722,13 @@ function InfoRow({
     <View
       style={[
         styles.infoRow,
-        last && styles.infoRowLast,
+        last &&
+          styles.infoRowLast,
       ]}
     >
-      <View style={styles.infoIcon}>
+      <View
+        style={styles.infoIcon}
+      >
         <Ionicons
           name={icon}
           size={18}
@@ -319,13 +736,22 @@ function InfoRow({
         />
       </View>
 
-      <View style={styles.infoContent}>
-        <Text style={styles.infoLabel}>
+      <View
+        style={
+          styles.infoContent
+        }
+      >
+        <Text
+          style={styles.infoLabel}
+        >
           {label}
         </Text>
 
-        <Text style={styles.infoValue}>
-          {value}
+        <Text
+          style={styles.infoValue}
+        >
+          {value ||
+            'Não informado'}
         </Text>
       </View>
     </View>
@@ -335,7 +761,8 @@ function InfoRow({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.surfaceMuted,
+    backgroundColor:
+      Colors.surfaceMuted,
   },
 
   header: {
@@ -344,10 +771,13 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.background,
+    justifyContent:
+      'space-between',
+    backgroundColor:
+      Colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor:
+      Colors.border,
   },
 
   headerTitle: {
@@ -358,7 +788,8 @@ const styles = StyleSheet.create({
 
   headerSubtitle: {
     marginTop: 3,
-    color: Colors.textSecondary,
+    color:
+      Colors.textSecondary,
     fontSize: 12,
   },
 
@@ -367,7 +798,8 @@ const styles = StyleSheet.create({
     height: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor:
+      Colors.surfaceSecondary,
     borderRadius: 21,
   },
 
@@ -376,11 +808,78 @@ const styles = StyleSheet.create({
     paddingBottom: 35,
   },
 
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+
+  loadingText: {
+    color:
+      Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  errorContainer: {
+    flex: 1,
+    paddingHorizontal: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  errorIcon: {
+    width: 68,
+    height: 68,
+    marginBottom: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor:
+      Colors.dangerSurface,
+    borderRadius: 34,
+  },
+
+  errorTitle: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  errorDescription: {
+    marginTop: 5,
+    color:
+      Colors.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+
+  retryButton: {
+    minHeight: 48,
+    marginTop: 18,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor:
+      Colors.primary,
+    borderRadius: 12,
+  },
+
+  retryButtonText: {
+    color: Colors.background,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
   profileCard: {
     marginBottom: 22,
     padding: 22,
     alignItems: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor:
+      Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 18,
@@ -391,7 +890,8 @@ const styles = StyleSheet.create({
     height: 72,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor:
+      Colors.primary,
     borderRadius: 36,
   },
 
@@ -400,12 +900,21 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 19,
     fontWeight: '900',
+    textAlign: 'center',
   },
 
   role: {
     marginTop: 4,
-    color: Colors.textSecondary,
+    color:
+      Colors.textSecondary,
     fontSize: 12,
+  },
+
+  registration: {
+    marginTop: 3,
+    color: Colors.textLabel,
+    fontSize: 10,
+    fontWeight: '700',
   },
 
   statusBadge: {
@@ -419,11 +928,13 @@ const styles = StyleSheet.create({
   },
 
   availableBadge: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor:
+      '#E8F5E9',
   },
 
   unavailableBadge: {
-    backgroundColor: Colors.dangerSurface,
+    backgroundColor:
+      Colors.dangerSurface,
   },
 
   statusDot: {
@@ -433,11 +944,13 @@ const styles = StyleSheet.create({
   },
 
   availableDot: {
-    backgroundColor: Colors.success,
+    backgroundColor:
+      Colors.success,
   },
 
   unavailableDot: {
-    backgroundColor: Colors.danger,
+    backgroundColor:
+      Colors.danger,
   },
 
   statusText: {
@@ -459,7 +972,8 @@ const styles = StyleSheet.create({
     color: Colors.textLabel,
     fontSize: 11,
     fontWeight: '800',
-    textTransform: 'uppercase',
+    textTransform:
+      'uppercase',
   },
 
   shiftCard: {
@@ -467,7 +981,8 @@ const styles = StyleSheet.create({
     padding: 15,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor:
+      Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 14,
@@ -478,7 +993,8 @@ const styles = StyleSheet.create({
     height: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor:
+      Colors.surfaceSecondary,
     borderRadius: 21,
   },
 
@@ -488,7 +1004,8 @@ const styles = StyleSheet.create({
   },
 
   shiftLabel: {
-    color: Colors.textSecondary,
+    color:
+      Colors.textSecondary,
     fontSize: 10,
   },
 
@@ -502,7 +1019,8 @@ const styles = StyleSheet.create({
   shiftStatus: {
     paddingHorizontal: 9,
     paddingVertical: 5,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor:
+      Colors.surfaceSecondary,
     borderRadius: 12,
   },
 
@@ -515,7 +1033,8 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 20,
     paddingHorizontal: 15,
-    backgroundColor: Colors.background,
+    backgroundColor:
+      Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 14,
@@ -526,7 +1045,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceSecondary,
+    borderBottomColor:
+      Colors.surfaceSecondary,
   },
 
   infoRowLast: {
@@ -538,7 +1058,8 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor:
+      Colors.surfaceSecondary,
     borderRadius: 18,
   },
 
@@ -548,7 +1069,8 @@ const styles = StyleSheet.create({
   },
 
   infoLabel: {
-    color: Colors.textSecondary,
+    color:
+      Colors.textSecondary,
     fontSize: 10,
     fontWeight: '600',
   },
@@ -563,7 +1085,8 @@ const styles = StyleSheet.create({
   specialtiesCard: {
     marginBottom: 20,
     padding: 15,
-    backgroundColor: Colors.background,
+    backgroundColor:
+      Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 14,
@@ -581,7 +1104,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor:
+      Colors.surfaceSecondary,
     borderRadius: 16,
   },
 
@@ -591,11 +1115,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  emptyText: {
+    color:
+      Colors.textSecondary,
+    fontSize: 11,
+  },
+
   actionRow: {
-    minHeight: 58,
+    minHeight: 67,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent:
+      'space-between',
   },
 
   actionLeft: {
@@ -604,10 +1135,47 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+  actionIcon: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor:
+      Colors.surfaceSecondary,
+    borderRadius: 18,
+  },
+
   actionText: {
     color: Colors.text,
     fontSize: 13,
     fontWeight: '700',
+  },
+
+  actionDescription: {
+    marginTop: 2,
+    color:
+      Colors.textSecondary,
+    fontSize: 9,
+  },
+
+  secondaryButton: {
+    minHeight: 52,
+    marginBottom: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor:
+      Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 14,
+  },
+
+  secondaryButtonText: {
+    color: Colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
   },
 
   logoutButton: {
@@ -616,10 +1184,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.background,
+    backgroundColor:
+      Colors.background,
     borderWidth: 1,
-    borderColor: Colors.dangerSurface,
+    borderColor:
+      Colors.dangerSurface,
     borderRadius: 14,
+  },
+
+  logoutButtonDisabled: {
+    opacity: 0.65,
   },
 
   logoutText: {
